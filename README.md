@@ -1,3 +1,3 @@
-# pastty
+# pashion shell
 
-self spun TTY for yours truely
+self spun shell for pastty
