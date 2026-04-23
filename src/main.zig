@@ -28,6 +28,7 @@ pub fn main(init: std.process.Init) void {
 
         if (std.mem.eql(u8, argv.items[0], "cd")) {
             if (argv.items.len < 2) {
+                // TODO:
                 // // use juicy main to get env vars
                 // const home_dir = std.process.getEnvVarOwned(gpa, "HOME") catch |env_err| {
                 //     stdout.interface.print("cd: HOME not set: {any}\n", .{env_err}) catch {};
@@ -75,7 +76,7 @@ pub fn main(init: std.process.Init) void {
                             std.log.warn("cd: {s}: {any} \n", .{ target, err });
                         },
                         error.Canceled => {
-                            stdout.interface.print("pash: cd: Process has been cancelled \n", .{target}) catch {};
+                            stdout.interface.print("pash: cd: Process has been cancelled \n", .{}) catch {};
                             std.log.warn("cd: {s}: {any} \n", .{ target, err });
                         },
                         error.AccessDenied => {
@@ -83,7 +84,7 @@ pub fn main(init: std.process.Init) void {
                             std.log.warn("cd: {s}: {any} \n", .{ target, err });
                         },
                         error.Unexpected => {
-                            stdout.interface.print("pash: cd: Unknown error encountered \n", .{target}) catch {};
+                            stdout.interface.print("pash: cd: Unknown error encountered \n", .{}) catch {};
                             std.log.warn("cd: {s}: {any} \n", .{ target, err });
                         },
                     }
@@ -112,8 +113,6 @@ pub fn main(init: std.process.Init) void {
             },
             else => std.log.err("{any}", .{err}),
         }
-
-        // if (std.mem.eql(u8, trimmed, "ls")) {}
     } else |err| {
         std.log.err("{any}", .{err});
     }
