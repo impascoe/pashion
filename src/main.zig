@@ -22,8 +22,76 @@ pub fn main(init: std.process.Init) void {
 
         if (argv.items.len == 0) continue;
 
-        if (std.mem.eql(u8, trimmed, "exit")) {
+        if (std.mem.eql(u8, argv.items[0], "exit")) {
             break;
+        }
+
+        if (std.mem.eql(u8, argv.items[0], "cd")) {
+            if (argv.items.len < 2) {
+                // // use juicy main to get env vars
+                // const home_dir = std.process.getEnvVarOwned(gpa, "HOME") catch |env_err| {
+                //     stdout.interface.print("cd: HOME not set: {any}\n", .{env_err}) catch {};
+                //     stdout.interface.flush() catch {};
+                //     continue;
+                // };
+                // defer gpa.free(home_dir);
+
+                // // change to std.Io.threaded.chdir
+                // if (std.posix.chdir(home_dir)) |_| {} else |err| {
+                //     stdout.interface.print("cd: {s}: {any}\n", .{ home_dir, err }) catch {};
+                //     stdout.interface.flush() catch {};
+                // }
+            } else {
+                const target = argv.items[1];
+
+                if (std.Io.Threaded.chdir(target)) {} else |err| {
+                    switch (err) {
+                        error.NotDir => {
+                            stdout.interface.print("pash: cd: '{s}' is not a directory \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.SymLinkLoop => {
+                            stdout.interface.print("pash: cd: '{s}' Too many levels of symbolic links \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.SystemResources => {
+                            stdout.interface.print("pash: cd: '{s}' Cannot allocate memory to process \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.NameTooLong => {
+                            stdout.interface.print("pash: cd: '{s}' File name is too long \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.FileNotFound => {
+                            stdout.interface.print("pash: cd: '{s}' File or directory not found \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.FileSystem => {
+                            stdout.interface.print("pash: cd: '{s}' I/O operation failed \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.BadPathName => {
+                            stdout.interface.print("pash: cd: '{s}' Illegal byte sequence encountered \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.Canceled => {
+                            stdout.interface.print("pash: cd: Process has been cancelled \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.AccessDenied => {
+                            stdout.interface.print("pash: cd: '{s}' Permission denied \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                        error.Unexpected => {
+                            stdout.interface.print("pash: cd: Unknown error encountered \n", .{target}) catch {};
+                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
+                        },
+                    }
+                    stdout.interface.flush() catch {};
+                }
+            }
+
+            continue;
         }
 
         if (std.process.run(gpa, io, .{ .argv = argv.items })) |result| {
