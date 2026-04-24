@@ -1,4 +1,4 @@
-# pashion shell
+# Pashion Shell (pash)
 
 A tiny experimental shell written in Zig. This project is currently under development and focused on core shell behavior and built-ins.
 
