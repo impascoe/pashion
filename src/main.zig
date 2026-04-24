@@ -1,24 +1,44 @@
 const std = @import("std");
+const cd = @import("builtins/cd.zig").cd;
 
-pub fn main(init: std.process.Init) void {
-    const gpa = init.gpa;
+pub fn main(init: std.process.Init) !void {
+    const arena_allocator = init.arena;
+
+    const arena = arena_allocator.allocator();
     const io = init.io;
 
     var in_buf: [1024]u8 = undefined;
     var out_buf: [1024]u8 = undefined;
 
+    var environ_map = try init.minimal.environ.createMap(arena);
+
     // var stdin = std.Io.File.stdin().reader(io, &in_buf);
     var stdout = std.Io.File.stdout().writer(io, &out_buf);
 
+    for (environ_map.keys(), environ_map.values()) |key, value| {
+        try stdout.interface.print("env: {s}={s}\n", .{ key, value });
+        stdout.interface.flush() catch {};
+    }
+
+    var args = init.minimal.args.iterate();
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--version")) {
+            stdout.interface.print("pash 0.0.1\n", .{}) catch {};
+            stdout.interface.flush() catch {};
+            return;
+        } else {
+            // std.log.info("arg: {s}", .{arg});
+        }
+    }
     while (readCommand(io, &in_buf, &out_buf)) |res| {
         const trimmed = std.mem.trim(u8, res, "\r\n");
 
         if (trimmed.len == 0) continue;
         var argv = std.ArrayList([]const u8).empty;
-        defer argv.deinit(gpa);
+        defer argv.deinit(arena);
 
         var it = std.mem.tokenizeAny(u8, trimmed, " \t");
-        while (it.next()) |tok| argv.append(gpa, tok) catch {};
+        while (it.next()) |tok| argv.append(arena, tok) catch {};
 
         if (argv.items.len == 0) continue;
 
@@ -27,77 +47,13 @@ pub fn main(init: std.process.Init) void {
         }
 
         if (std.mem.eql(u8, argv.items[0], "cd")) {
-            if (argv.items.len < 2) {
-                // TODO:
-                // // use juicy main to get env vars
-                // const home_dir = std.process.getEnvVarOwned(gpa, "HOME") catch |env_err| {
-                //     stdout.interface.print("cd: HOME not set: {any}\n", .{env_err}) catch {};
-                //     stdout.interface.flush() catch {};
-                //     continue;
-                // };
-                // defer gpa.free(home_dir);
-
-                // // change to std.Io.threaded.chdir
-                // if (std.posix.chdir(home_dir)) |_| {} else |err| {
-                //     stdout.interface.print("cd: {s}: {any}\n", .{ home_dir, err }) catch {};
-                //     stdout.interface.flush() catch {};
-                // }
-            } else {
-                const target = argv.items[1];
-
-                if (std.Io.Threaded.chdir(target)) {} else |err| {
-                    switch (err) {
-                        error.NotDir => {
-                            stdout.interface.print("pash: cd: '{s}' is not a directory \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.SymLinkLoop => {
-                            stdout.interface.print("pash: cd: '{s}' Too many levels of symbolic links \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.SystemResources => {
-                            stdout.interface.print("pash: cd: '{s}' Cannot allocate memory to process \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.NameTooLong => {
-                            stdout.interface.print("pash: cd: '{s}' File name is too long \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.FileNotFound => {
-                            stdout.interface.print("pash: cd: '{s}' File or directory not found \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.FileSystem => {
-                            stdout.interface.print("pash: cd: '{s}' I/O operation failed \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.BadPathName => {
-                            stdout.interface.print("pash: cd: '{s}' Illegal byte sequence encountered \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.Canceled => {
-                            stdout.interface.print("pash: cd: Process has been cancelled \n", .{}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.AccessDenied => {
-                            stdout.interface.print("pash: cd: '{s}' Permission denied \n", .{target}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                        error.Unexpected => {
-                            stdout.interface.print("pash: cd: Unknown error encountered \n", .{}) catch {};
-                            std.log.warn("cd: {s}: {any} \n", .{ target, err });
-                        },
-                    }
-                    stdout.interface.flush() catch {};
-                }
-            }
-
+            cd(io, &environ_map, argv.items) catch {};
             continue;
         }
 
-        if (std.process.run(gpa, io, .{ .argv = argv.items })) |result| {
-            defer gpa.free(result.stdout);
-            defer gpa.free(result.stderr);
+        if (std.process.run(arena, io, .{ .argv = argv.items })) |result| {
+            defer arena.free(result.stdout);
+            defer arena.free(result.stderr);
 
             stdout.interface.print("{s}", .{result.stdout}) catch {};
             stdout.interface.flush() catch {};
@@ -111,18 +67,19 @@ pub fn main(init: std.process.Init) void {
                 stdout.interface.print("pash: command not found: {s}\n", .{argv.items[0]}) catch {};
                 stdout.interface.flush() catch {};
             },
-            else => std.log.err("{any}", .{err}),
+            else => stdout.interface.print("{any}", .{err}) catch {},
         }
     } else |err| {
-        std.log.err("{any}", .{err});
+        stdout.interface.print("{any}", .{err}) catch {};
     }
+    stdout.interface.flush() catch {};
 }
 
 fn readCommand(io: std.Io, in_buf: *[1024]u8, out_buf: *[1024]u8) ![]u8 {
     var stdin = std.Io.File.stdin().reader(io, in_buf);
     var stdout = std.Io.File.stdout().writer(io, out_buf);
 
-    try stdout.interface.print("> ", .{});
+    try stdout.interface.print("#> ", .{});
     try stdout.interface.flush();
 
     const res = try stdin.interface.takeDelimiter('\n');
