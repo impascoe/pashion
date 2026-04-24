@@ -2,15 +2,15 @@ const std = @import("std");
 const cd = @import("builtins/cd.zig").cd;
 
 pub fn main(init: std.process.Init) !void {
-    const arena_allocator = init.arena;
+    const gpa = init.gpa;
 
-    const arena = arena_allocator.allocator();
     const io = init.io;
 
-    var in_buf: [1024]u8 = undefined;
-    var out_buf: [1024]u8 = undefined;
+    var in_buf: [4096]u8 = undefined;
+    var out_buf: [4096]u8 = undefined;
 
-    var environ_map = try init.minimal.environ.createMap(arena);
+    var environ_map = try init.minimal.environ.createMap(gpa);
+    defer environ_map.deinit();
 
     // var stdin = std.Io.File.stdin().reader(io, &in_buf);
     var stdout = std.Io.File.stdout().writer(io, &out_buf);
@@ -30,20 +30,37 @@ pub fn main(init: std.process.Init) !void {
             // std.log.info("arg: {s}", .{arg});
         }
     }
-    while (readCommand(io, &in_buf, &out_buf)) |res| {
+    while (true) {
+        const res = readCommand(io, &in_buf, &out_buf) catch |err| switch (err) {
+            error.StreamTooLong => {
+                stdout.interface.print("pash: input line too long\n", .{}) catch {};
+                stdout.interface.flush() catch {};
+                continue;
+            },
+            else => {
+                stdout.interface.print("{any}", .{err}) catch {};
+                stdout.interface.flush() catch {};
+                break;
+            },
+        };
         const trimmed = std.mem.trim(u8, res, "\r\n");
 
         if (trimmed.len == 0) continue;
         var argv = std.ArrayList([]const u8).empty;
-        defer argv.deinit(arena);
+        defer argv.deinit(gpa);
 
         var it = std.mem.tokenizeAny(u8, trimmed, " \t");
-        while (it.next()) |tok| argv.append(arena, tok) catch {};
+        while (it.next()) |tok| argv.append(gpa, tok) catch {
+            stdout.interface.print("pash: out of memory\n", .{}) catch {};
+            stdout.interface.flush() catch {};
+            continue;
+        };
 
         if (argv.items.len == 0) continue;
 
         if (std.mem.eql(u8, argv.items[0], "exit")) {
-            break;
+            std.process.cleanExit(io);
+            return;
         }
 
         if (std.mem.eql(u8, argv.items[0], "cd")) {
@@ -51,9 +68,9 @@ pub fn main(init: std.process.Init) !void {
             continue;
         }
 
-        if (std.process.run(arena, io, .{ .argv = argv.items })) |result| {
-            defer arena.free(result.stdout);
-            defer arena.free(result.stderr);
+        if (std.process.run(gpa, io, .{ .argv = argv.items })) |result| {
+            defer gpa.free(result.stdout);
+            defer gpa.free(result.stderr);
 
             stdout.interface.print("{s}", .{result.stdout}) catch {};
             stdout.interface.flush() catch {};
@@ -69,19 +86,31 @@ pub fn main(init: std.process.Init) !void {
             },
             else => stdout.interface.print("{any}", .{err}) catch {},
         }
-    } else |err| {
-        stdout.interface.print("{any}", .{err}) catch {};
     }
     stdout.interface.flush() catch {};
 }
 
-fn readCommand(io: std.Io, in_buf: *[1024]u8, out_buf: *[1024]u8) ![]u8 {
+fn readCommand(io: std.Io, in_buf: *[4096]u8, out_buf: *[4096]u8) ![]u8 {
     var stdin = std.Io.File.stdin().reader(io, in_buf);
     var stdout = std.Io.File.stdout().writer(io, out_buf);
 
     try stdout.interface.print("#> ", .{});
     try stdout.interface.flush();
 
-    const res = try stdin.interface.takeDelimiter('\n');
-    return res orelse error.ReadFailed;
+    const result = stdin.interface.takeDelimiter('\n') catch |err| switch (err) {
+        error.StreamTooLong => {
+            _ = stdin.interface.discardDelimiterInclusive('\n') catch |erro| switch (erro) {
+                error.EndOfStream => {
+                    return erro;
+                },
+                else => {
+                    return erro;
+                },
+            };
+            return error.StreamTooLong;
+        },
+        else => return err,
+    };
+
+    return result orelse error.ReadFailed;
 }
