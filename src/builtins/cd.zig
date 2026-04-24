@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn cd(io: std.Io, environ: *std.process.Environ.Map, argv: [][]const u8) !void {
-    var stdout_buf: [1024]u8 = undefined;
+    var stdout_buf: [4096]u8 = undefined;
 
     var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
 
@@ -40,34 +40,34 @@ pub fn cd(io: std.Io, environ: *std.process.Environ.Map, argv: [][]const u8) !vo
         if (std.Io.Threaded.chdir(target)) {} else |err| {
             switch (err) {
                 error.NotDir => {
-                    try stdout.interface.print("pash: cd: '{s}'  No such file or directory \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}'  No such file or directory\n", .{target});
                 },
                 error.SymLinkLoop => {
-                    try stdout.interface.print("pash: cd: '{s}' Too many levels of symbolic links \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' Too many levels of symbolic links\n", .{target});
                 },
                 error.SystemResources => {
-                    try stdout.interface.print("pash: cd: '{s}' Cannot allocate memory to process \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' Cannot allocate memory to process\n", .{target});
                 },
                 error.NameTooLong => {
-                    try stdout.interface.print("pash: cd: '{s}' File name is too long \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' File name is too long\n", .{target});
                 },
                 error.FileNotFound => {
-                    try stdout.interface.print("pash: cd: '{s}' File or directory not found \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' File or directory not found\n", .{target});
                 },
                 error.FileSystem => {
-                    try stdout.interface.print("pash: cd: '{s}' I/O operation failed \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' I/O operation failed\n", .{target});
                 },
                 error.BadPathName => {
-                    try stdout.interface.print("pash: cd: '{s}' Illegal byte sequence encountered \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' Illegal byte sequence encountered\n", .{target});
                 },
                 error.Canceled => {
-                    try stdout.interface.print("pash: cd: Process has been cancelled \n", .{});
+                    try stdout.interface.print("pash: cd: Process has been cancelled\n", .{});
                 },
                 error.AccessDenied => {
-                    try stdout.interface.print("pash: cd: '{s}' Permission denied \n", .{target});
+                    try stdout.interface.print("pash: cd: '{s}' Permission denied\n", .{target});
                 },
                 error.Unexpected => {
-                    try stdout.interface.print("pash: cd: Unknown error encountered \n", .{});
+                    try stdout.interface.print("pash: cd: Unknown error encountered\n", .{});
                 },
             }
             try stdout.interface.flush();
