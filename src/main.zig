@@ -12,7 +12,6 @@ pub fn main(init: std.process.Init) !void {
     var environ_map = try init.minimal.environ.createMap(gpa);
     defer environ_map.deinit();
 
-    // var stdin = std.Io.File.stdin().reader(io, &in_buf);
     var stdout = std.Io.File.stdout().writer(io, &out_buf);
 
     for (environ_map.keys(), environ_map.values()) |key, value| {
@@ -64,7 +63,7 @@ pub fn main(init: std.process.Init) !void {
         }
 
         if (std.mem.eql(u8, argv.items[0], "cd")) {
-            cd(io, &environ_map, argv.items) catch {};
+            cd(io, gpa, &environ_map, argv.items) catch {};
             continue;
         }
 
