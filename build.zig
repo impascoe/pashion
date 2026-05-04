@@ -23,7 +23,19 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
 
+    const test_module = b.createModule(.{
+        .root_source_file = b.path("src/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const tests = b.addTest(.{ .root_module = test_module });
+
+    const test_cmd = b.addRunArtifact(tests);
+
     run_cmd.step.dependOn(b.getInstallStep());
+
+    test_cmd.step.dependOn(b.getInstallStep());
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
@@ -34,4 +46,7 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const test_step = b.step("test", "run tests");
+    test_step.dependOn(&test_cmd.step);
 }

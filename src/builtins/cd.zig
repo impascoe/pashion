@@ -46,6 +46,10 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
         //     try stdout.interface.flush();
         // }
 
+        // use std.Io.Dir.openDir to check if directories exist for CDPATH
+        // std.mem.endsWith(u8, target, "/")
+        // std.mem.concat(allocator: Allocator, comptime T: type, slices: []const []const T)
+
         if (std.Io.Threaded.chdir(target)) {
             try environ.put("OLDPWD", current_dir);
 
@@ -89,6 +93,15 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
             try stdout.interface.flush();
         }
     }
+}
+
+test "CPATH no fields" {
+    const allocator = std.testing.allocator;
+    var environment: std.array_hash_map.String([]const u8) = .empty;
+    defer environment.deinit(allocator);
+
+    try environment.put(allocator, "CPATH", "");
+    try std.testing.expect(true);
 }
 
 // 1. split CPATH into strings/accessable directories
