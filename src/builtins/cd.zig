@@ -26,7 +26,7 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
         var target = argv[1];
         var curpath = target;
 
-        if (std.mem.startsWith(u8, "-", target)) {
+        if (std.mem.startsWith(u8, target, "-")) {
             if (std.mem.eql(u8, "-", target)) {
                 const prev_dir = environ.get("OLDPWD") orelse {
                     return;
@@ -35,13 +35,20 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
                 curpath = prev_dir;
                 try stdout.interface.print("{s}\n", .{curpath});
                 try stdout.interface.flush();
-            }
-            if (std.mem.endsWith(u8, "P", target)) {
-                flag = flags.P_FLAG;
-                target = argv[2];
-            } else if (std.mem.endsWith(u8, "L", target)) {
-                flag = flags.L_FLAG;
-                target = argv[2];
+            } else if (!(argv.len < 3)) {
+                if (std.mem.endsWith(u8, target, "P")) {
+                    flag = flags.P_FLAG;
+                    target = argv[2];
+                    curpath = target;
+                } else if (std.mem.endsWith(u8, target, "L")) {
+                    flag = flags.L_FLAG;
+                    target = argv[2];
+                    curpath = target;
+                }
+            } else {
+                try stdout.interface.print("pash: cd: No file or directory specified\n", .{});
+                try stdout.interface.flush();
+                return;
             }
         }
 
@@ -64,7 +71,10 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
             }
         }
 
-        if (!(flag == flags.P_FLAG)) {}
+        if (flag == flags.P_FLAG) {
+            try stdout.interface.print("P flag has been set\n", .{});
+            try stdout.interface.flush();
+        }
 
         if (std.Io.Threaded.chdir(curpath)) {
             try environ.put("OLDPWD", current_dir);
