@@ -18,7 +18,8 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
             try stdout.interface.flush();
         }
     } else {
-        var target = argv[1];
+        const target = argv[1];
+        var curpath = target;
 
         if (std.mem.eql(u8, "~", target)) {
             const home_dir = environ.get("HOME") orelse {
@@ -26,31 +27,32 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
                 try stdout.interface.flush();
                 return;
             };
-            target = home_dir;
-        }
-
-        if (std.mem.eql(u8, "-", target)) {
+            curpath = home_dir;
+        } else if (std.mem.eql(u8, "-", target)) {
             const prev_dir = environ.get("OLDPWD") orelse {
                 return;
             };
 
-            target = prev_dir;
+            curpath = prev_dir;
 
+            try stdout.interface.print("{s}\n", .{curpath});
+            try stdout.interface.flush();
+        } else if (std.mem.startsWith(u8, target, "/")) {
             try stdout.interface.print("{s}\n", .{target});
+            try stdout.interface.print("Skipping the CDPATH section\n", .{});
+            try stdout.interface.flush();
+            curpath = target;
+        } else if (std.mem.startsWith(u8, target, ".")) {} else {
+            curpath = try check_cdpath(io, gpa, environ.get("CDPATH") orelse "", target, &curpath);
+            try stdout.interface.print("{s}\n", .{curpath});
             try stdout.interface.flush();
         }
-
-        // if (std.mem.startsWith(u8, target, "/")) {
-        //     try stdout.interface.print("{s}\n", .{target});
-        //     try stdout.interface.print("Skipping the CDPATH section\n", .{});
-        //     try stdout.interface.flush();
-        // }
 
         // use std.Io.Dir.openDir to check if directories exist for CDPATH
         // std.mem.endsWith(u8, target, "/")
         // std.mem.concat(allocator: Allocator, comptime T: type, slices: []const []const T)
 
-        if (std.Io.Threaded.chdir(target)) {
+        if (std.Io.Threaded.chdir(curpath)) {
             try environ.put("OLDPWD", current_dir);
 
             const path = try std.process.currentPathAlloc(io, gpa);
@@ -95,18 +97,29 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
     }
 }
 
-test "CPATH no fields" {
-    const allocator = std.testing.allocator;
-    var environment: std.array_hash_map.String([]const u8) = .empty;
-    defer environment.deinit(allocator);
+fn check_cdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_path: []const u8, curpath: *[]const u8) ![]const u8 {
+    var path_iterator = std.mem.splitAny(u8, cdpath, ":");
 
-    try environment.put(allocator, "CPATH", "");
-    try std.testing.expect(true);
+    while (path_iterator.next()) |path| {
+        if (!std.mem.endsWith(u8, path, "/")) {
+            curpath.* = try std.mem.concat(gpa, u8, &[_][]const u8{ path, "/", target_path });
+            std.log.debug("{s}\n", .{curpath.*});
+            _ = try std.Io.Dir.openDirAbsolute(io, curpath.*, .{});
+            return curpath.*;
+        } else {
+            curpath.* = try std.mem.concat(gpa, u8, &[_][]const u8{ path, target_path });
+            std.log.debug("{s}\n", .{curpath.*});
+            _ = try std.Io.Dir.openDirAbsolute(io, curpath.*, .{});
+            return curpath.*;
+        }
+    } else {
+        return "";
+    }
 }
 
-// 1. split CPATH into strings/accessable directories
+// 1. split CDPATH into strings/accessable directories
 // 2. read directory.
-// 3. eg. export CPATH="/home/isaac:/usr"
+// 3. eg. export CDPATH="/home/isaac:/usr"
 //  - cd bin -> check first path "/home/isaac" for bin and loop through each in CPATH
 //  - is bin inside "/home/isaac" steps:
 //  -   concat "/" to "/home/isaac" if doesn't end with "/"

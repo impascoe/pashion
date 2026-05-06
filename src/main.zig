@@ -25,8 +25,6 @@ pub fn main(init: std.process.Init) !void {
             stdout.interface.print("pash 0.0.1\n", .{}) catch {};
             stdout.interface.flush() catch {};
             return;
-        } else {
-            // std.log.info("arg: {s}", .{arg});
         }
     }
     while (true) {
