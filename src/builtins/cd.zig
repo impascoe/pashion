@@ -2,6 +2,8 @@ const std = @import("std");
 
 pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map, argv: [][]const u8) !void {
     var stdout_buf: [4096]u8 = undefined;
+    var cdpath_path: ?[]u8 = null;
+    defer if (cdpath_path) |path| gpa.free(path);
 
     var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
     const current_dir = environ.get("PWD") orelse return;
@@ -43,9 +45,12 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
             try stdout.interface.flush();
             curpath = target;
         } else if (std.mem.startsWith(u8, target, ".")) {} else {
-            curpath = try check_cdpath(io, gpa, environ.get("CDPATH") orelse "", target, &curpath);
-            try stdout.interface.print("{s}\n", .{curpath});
-            try stdout.interface.flush();
+            cdpath_path = try check_cdpath(io, gpa, environ.get("CDPATH") orelse "", target);
+            if (cdpath_path) |path| {
+                curpath = path;
+                try stdout.interface.print("{s}\n", .{curpath});
+                try stdout.interface.flush();
+            }
         }
 
         // use std.Io.Dir.openDir to check if directories exist for CDPATH
@@ -97,24 +102,39 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
     }
 }
 
-fn check_cdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_path: []const u8, curpath: *[]const u8) ![]const u8 {
+fn check_cdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_path: []const u8) !?[]u8 {
     var path_iterator = std.mem.splitAny(u8, cdpath, ":");
+    var cd_path: []u8 = undefined;
 
     while (path_iterator.next()) |path| {
-        if (!std.mem.endsWith(u8, path, "/")) {
-            curpath.* = try std.mem.concat(gpa, u8, &[_][]const u8{ path, "/", target_path });
-            std.log.debug("{s}\n", .{curpath.*});
-            _ = try std.Io.Dir.openDirAbsolute(io, curpath.*, .{});
-            return curpath.*;
+        if (path.len == 0) {
+            cd_path = try gpa.dupe(u8, target_path);
+        } else if (std.mem.endsWith(u8, path, "/")) {
+            cd_path = try std.mem.concat(gpa, u8, &[_][]const u8{ path, target_path });
         } else {
-            curpath.* = try std.mem.concat(gpa, u8, &[_][]const u8{ path, target_path });
-            std.log.debug("{s}\n", .{curpath.*});
-            _ = try std.Io.Dir.openDirAbsolute(io, curpath.*, .{});
-            return curpath.*;
+            cd_path = try std.mem.concat(gpa, u8, &[_][]const u8{ path, "/", target_path });
         }
-    } else {
-        return "";
+
+        if (std.Io.Dir.openDir(std.Io.Dir.cwd(), io, cd_path, .{})) |dir| {
+            std.Io.Dir.close(dir, io);
+            return cd_path;
+        } else |err| {
+            gpa.free(cd_path);
+            switch (err) {
+                error.FileNotFound,
+                error.NotDir,
+                error.AccessDenied,
+                error.PermissionDenied,
+                error.SymLinkLoop,
+                error.BadPathName,
+                error.NameTooLong,
+                error.NetworkNotFound,
+                => continue,
+                else => return err,
+            }
+        }
     }
+    return null;
 }
 
 // 1. split CDPATH into strings/accessable directories
