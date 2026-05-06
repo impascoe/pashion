@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const flags = enum { L_FLAG, P_FLAG };
+
 pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map, argv: [][]const u8) !void {
     var stdout_buf: [4096]u8 = undefined;
     var cdpath_path: ?[]u8 = null;
@@ -20,8 +22,28 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
             try stdout.interface.flush();
         }
     } else {
-        const target = argv[1];
+        var flag = flags.L_FLAG;
+        var target = argv[1];
         var curpath = target;
+
+        if (std.mem.startsWith(u8, "-", target)) {
+            if (std.mem.eql(u8, "-", target)) {
+                const prev_dir = environ.get("OLDPWD") orelse {
+                    return;
+                };
+
+                curpath = prev_dir;
+                try stdout.interface.print("{s}\n", .{curpath});
+                try stdout.interface.flush();
+            }
+            if (std.mem.endsWith(u8, "P", target)) {
+                flag = flags.P_FLAG;
+                target = argv[2];
+            } else if (std.mem.endsWith(u8, "L", target)) {
+                flag = flags.L_FLAG;
+                target = argv[2];
+            }
+        }
 
         if (std.mem.eql(u8, "~", target)) {
             const home_dir = environ.get("HOME") orelse {
@@ -30,22 +52,11 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
                 return;
             };
             curpath = home_dir;
-        } else if (std.mem.eql(u8, "-", target)) {
-            const prev_dir = environ.get("OLDPWD") orelse {
-                return;
-            };
-
-            curpath = prev_dir;
-
-            try stdout.interface.print("{s}\n", .{curpath});
-            try stdout.interface.flush();
         } else if (std.mem.startsWith(u8, target, "/")) {
-            try stdout.interface.print("{s}\n", .{target});
-            try stdout.interface.print("Skipping the CDPATH section\n", .{});
-            try stdout.interface.flush();
             curpath = target;
-        } else if (std.mem.startsWith(u8, target, ".")) {} else {
+        } else if (std.mem.startsWith(u8, target, ".") or std.mem.startsWith(u8, target, "..")) {} else {
             cdpath_path = try check_cdpath(io, gpa, environ.get("CDPATH") orelse "", target);
+
             if (cdpath_path) |path| {
                 curpath = path;
                 try stdout.interface.print("{s}\n", .{curpath});
@@ -53,9 +64,7 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
             }
         }
 
-        // use std.Io.Dir.openDir to check if directories exist for CDPATH
-        // std.mem.endsWith(u8, target, "/")
-        // std.mem.concat(allocator: Allocator, comptime T: type, slices: []const []const T)
+        if (!(flag == flags.P_FLAG)) {}
 
         if (std.Io.Threaded.chdir(curpath)) {
             try environ.put("OLDPWD", current_dir);
@@ -136,15 +145,3 @@ fn check_cdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_p
     }
     return null;
 }
-
-// 1. split CDPATH into strings/accessable directories
-// 2. read directory.
-// 3. eg. export CDPATH="/home/isaac:/usr"
-//  - cd bin -> check first path "/home/isaac" for bin and loop through each in CPATH
-//  - is bin inside "/home/isaac" steps:
-//  -   concat "/" to "/home/isaac" if doesn't end with "/"
-//  -   check "/home/isaac/bin" is a directory or no
-//  -   if inside, then change dir, else:
-//  -   check "./" directory
-//  -   if inside, then change dir, else:
-//  -   loop through every variable until null or directory is found
