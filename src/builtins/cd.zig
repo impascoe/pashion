@@ -104,22 +104,22 @@ pub fn cd(io: std.Io, gpa: std.mem.Allocator, environ: *std.process.Environ.Map,
 
 fn check_cdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_path: []const u8) !?[]u8 {
     var path_iterator = std.mem.splitAny(u8, cdpath, ":");
-    var cd_path: []u8 = undefined;
+    var curpath: []u8 = undefined;
 
     while (path_iterator.next()) |path| {
         if (path.len == 0) {
-            cd_path = try gpa.dupe(u8, target_path);
+            curpath = try gpa.dupe(u8, target_path);
         } else if (std.mem.endsWith(u8, path, "/")) {
-            cd_path = try std.mem.concat(gpa, u8, &[_][]const u8{ path, target_path });
+            curpath = try std.mem.concat(gpa, u8, &[_][]const u8{ path, target_path });
         } else {
-            cd_path = try std.mem.concat(gpa, u8, &[_][]const u8{ path, "/", target_path });
+            curpath = try std.mem.concat(gpa, u8, &[_][]const u8{ path, "/", target_path });
         }
 
-        if (std.Io.Dir.openDir(std.Io.Dir.cwd(), io, cd_path, .{})) |dir| {
+        if (std.Io.Dir.openDir(std.Io.Dir.cwd(), io, curpath, .{})) |dir| {
             std.Io.Dir.close(dir, io);
-            return cd_path;
+            return curpath;
         } else |err| {
-            gpa.free(cd_path);
+            gpa.free(curpath);
             switch (err) {
                 error.FileNotFound,
                 error.NotDir,
