@@ -149,7 +149,7 @@ fn checkCdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_pa
         const should_print = path.len != 0;
 
         if (path.len == 0) {
-            curpath = try gpa.dupe(u8, target_path);
+            curpath = try std.mem.concat(gpa, u8, &[_][]const u8{ "./", target_path });
         } else if (std.mem.endsWith(u8, path, "/")) {
             curpath = try std.mem.concat(gpa, u8, &[_][]const u8{ path, target_path });
         } else {
@@ -159,6 +159,7 @@ fn checkCdpath(io: std.Io, gpa: std.mem.Allocator, cdpath: []const u8, target_pa
         if (checkIfDirectory(io, curpath)) {
             return CdpathResult{ .path = curpath, .should_print = should_print };
         }
+        gpa.free(curpath);
     }
     return null;
 }
