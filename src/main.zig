@@ -13,22 +13,22 @@ pub fn main(init: std.process.Init) !void {
     var environ_map = try init.minimal.environ.createMap(gpa);
     defer environ_map.deinit();
 
-    var stdin = std.Io.File.stdin();
+    // var stdin = std.Io.File.stdin();
     // var stdinreader = std.Io.File.stdin().reader(io, &in_buf);
 
     var stdout = std.Io.File.stdout().writer(io, &out_buf);
     var stderr = std.Io.File.stderr().writer(io, &err_buf);
 
-    const isatty = stdin.isTty(io);
+    // const isatty = stdin.isTty(io);
 
     var last_status: u8 = 0;
 
-    try stdout.interface.print("isatty: {any}\n", .{isatty});
+    // try stdout.interface.print("isatty: {any}\n", .{isatty});
 
-    for (environ_map.keys(), environ_map.values()) |key, value| {
-        try stdout.interface.print("env: {s}={s}\n", .{ key, value });
-        stdout.interface.flush() catch {};
-    }
+    // for (environ_map.keys(), environ_map.values()) |key, value| {
+    //     try stdout.interface.print("env: {s}={s}\n", .{ key, value });
+    //     stdout.interface.flush() catch {};
+    // }
 
     var args = init.minimal.args.iterate();
     while (args.next()) |arg| {
